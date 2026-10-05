@@ -6,9 +6,9 @@
 <style>
 /* Layout: one-screen arcade cabinet. HUD strip on top, the circuit board fills the rest; on touch screens the controls float over the board. */
 :root{
-  --ground:#05070a;
-  --panel:#0d1217;
-  --line:#1c2630;
+  --ground:#000000;
+  --panel:#141414;
+  --line:#3a3a3a;
   --ink:#d9e4ea;
   --dim:#7d8e9a;
   --amber:#ffb23e;
@@ -30,7 +30,7 @@ body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);
 .hud{display:flex;flex-wrap:wrap;gap:6px 22px;flex:1 1 auto}
 .stat{display:flex;flex-direction:column;gap:3px;min-width:0}
 .lbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
-.val{font-family:var(--display);font-size:18px;font-variant-numeric:tabular-nums;line-height:1}
+.val{font-family:var(--display);color:#ffd23a;text-shadow:0 0 6px rgba(255,190,40,.45);font-size:18px;font-variant-numeric:tabular-nums;line-height:1}
 .val.need{color:var(--infotron)}
 .val.need.open{color:var(--amber)}
 .val.flash{animation:flash .45s 2}
@@ -41,7 +41,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 .btn:hover{border-color:#36444f}
 .btn.primary{background:var(--amber);border-color:var(--amber);color:#1a1205}
 :focus-visible{outline:2px solid var(--amber);outline-offset:2px}
-#stage{position:relative;min-height:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#020304}
+#stage{position:relative;min-height:0;border:3px solid #6b6b6b;border-color:#9a9a9a #3e3e3e #3e3e3e #9a9a9a;border-radius:4px;overflow:hidden;background:#000}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .toast{position:absolute;left:12px;right:12px;top:12px;margin-inline:auto;max-width:560px;box-sizing:border-box;background:rgba(10,14,18,.92);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:4px;pointer-events:none;transition:opacity .6s;z-index:1}
 .toast.gone{opacity:0}
@@ -1095,7 +1095,7 @@ const DIRS=[{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];          // up, right, d
 const PORTS={'^':1,'>':2,'v':4,'<':8,'|':5,'-':10,'+':15};      // bit per direction
 const ROUND=new Set([ZONK,INFO,RAM]);                            // things roll off these
 const DYN=new Set([ZONK,INFO,ODISK,RDISK,RDISK_ON,SNIK,ELEC,EXPL]);
-const TICK=105, EXPL_T=7, FUSE=32;
+const TICK=120, EXPL_T=7, FUSE=32;
 const OOB={t:WALL};
 
 const $=id=>document.getElementById(id);
@@ -1110,7 +1110,7 @@ const fmt=t=>{ const s=Math.floor(t*TICK/1000); return Math.floor(s/60)+':'+pad2
 let W=0, H=0, grid=null, m=null, li=0, need=0, got=0, tick=0, playTicks=0, acc=0;
 let pending=[], state='menu', deadTimer=0, exitOpen=false, dropReq=false;
 let T=32, dpr=1, vw=1, vh=1, spr=null, spriteKey='', cam={x:0,y:0}, camSnap=true, shake=0;
-let parts=[], vig=null;
+let parts=[], rings=[], flash=null, vig=null;
 let touchMode=false, ins={l:0,r:0,b:0};   // ins: board area hidden under the touch controls, in CSS pixels
 
 // Start Murphy's move right away when a key is pressed while he's standing still.
@@ -1403,7 +1403,7 @@ function load(i){
   H=rows.length; W=Math.max(...rows.map(r=>r.length));
   grid=new Array(W*H).fill(null);
   m={x:1,y:1,fx:1,fy:1,mt:-1,alive:true,look:2,push:0,disks:0,snapT:-9,eat:null};
-  parts=[];
+  parts=[]; rings=[]; flash=null;
   for(let y=0;y<H;y++) for(let x=0;x<W;x++){
     let ch=rows[y][x]||'#';
     if(x===0||y===0||x===W-1||y===H-1) ch='#';
@@ -1459,8 +1459,12 @@ function collect(c,x,y,d,snap){
   m.eat={x,y,kind:c.t,v:c.v,dir:d,snap,tick};
   if(c.t===INFO){
     got++; sfx('info');
-    burst(x,y,12,['#ffffff','#f59bff','#d863f0'],3.2,.06,0,480);
-    if(!exitOpen&&got>=need){ exitOpen=true; sfx('open'); }
+    burst(x,y,20,['#ffffff','#f59bff','#d863f0'],3.6,.06,0,520);
+    ring(x,y,'216,99,240',.2,1.4,420);
+    if(!exitOpen&&got>=need){
+      exitOpen=true; sfx('open'); flash={c:'255,178,62',a:.35};
+      grid.forEach((c,i)=>{ if(c&&c.t===EXIT){ ring(i%W,Math.floor(i/W),'255,178,62',.3,3,900); burst(i%W,Math.floor(i/W),24,['#fff3b0','#ffb23e'],3,.06,0,700); } });
+    }
   }else if(c.t===RDISK){ m.disks++; sfx('pick'); burst(x,y,8,['#ffffff','#ff6a5e'],2.6,.06,0,400); }
   else { sfx('eat'); burst(x,y,5,['#5fd68a','#2f9150','#f2cd5e'],2.2,.065,9,380); }
 }
@@ -1535,7 +1539,8 @@ function stepFall(c,x,y){
     if(c.t===ODISK){ explode(x,y,false); return; }
     if(b&&b.t===ODISK){ explode(x,y+1,false); return; }
     sfx(c.t===ZONK?'thud':'tick');
-    if(c.t===ZONK) burst(x,y+.42,5,['#8a949d','#c3cbd2','#5f6871'],1.6,.05,4,340);
+    if(c.t===ZONK){ if(!reduceMotion) shake=Math.max(shake,2.5); }
+    if(c.t===ZONK) burst(x,y+.42,8,['#8a949d','#c3cbd2','#5f6871'],1.6,.05,4,340);
   }
   if(!b||c.t===ODISK||!ROUND.has(b.t)||b.falling) return;
   if(free(x-1,y)&&free(x-1,y+1)){ move(x,y,x-1,y); return; }
@@ -1556,7 +1561,9 @@ function stepEnemy(c,x,y){
 
 function explode(cx,cy,info){
   sfx('boom');
-  if(!reduceMotion) shake=Math.max(shake,7);
+  if(!reduceMotion) shake=Math.max(shake,11);
+  ring(cx,cy,info?'248,160,255':'255,214,90',.3,2.2,450);
+  flash={c:'255,240,210',a:Math.max(flash?flash.a:0,.22)};
   for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
     const x=cx+dx, y=cy+dy;
     if(x<0||y<0||x>=W||y>=H) continue;
@@ -1565,7 +1572,7 @@ function explode(cx,cy,info){
     if(c&&(dx||dy)&&(c.t===ODISK||c.t===RDISK||c.t===RDISK_ON||c.t===ELEC||c.t===SNIK))
       pending.push({x,y,info:c.t===ELEC});
     grid[i]={t:EXPL,timer:EXPL_T,info:info,mt:tick,falling:false};
-    burst(x,y,6,info?['#ffffff','#f59bff','#b44ae0']:['#fff3b0','#ffb23e','#ff6a1c','#c2381a'],4.2,.08,5,650);
+    burst(x,y,10,info?['#ffffff','#f59bff','#b44ae0']:['#fff3b0','#ffb23e','#ff6a1c','#c2381a'],4.2,.08,5,650);
     if(isM(x,y)) die();
   }
 }
@@ -1626,13 +1633,13 @@ function screw(g,x,y,rad,a){
 
 // Empty floor: dark board with a faint grid and the odd dead trace.
 function dBg(g,v){
-  g.fillStyle='#0c1117'; g.fillRect(0,0,1,1);
-  g.fillStyle='rgba(255,255,255,.035)'; g.fillRect(0,0,1,.02); g.fillRect(0,0,.02,1);
-  g.fillStyle='#19232d'; dot(g,.5,.5,.03);
+  g.fillStyle='#000000'; g.fillRect(0,0,1,1);
+  g.fillStyle='rgba(255,255,255,.025)'; g.fillRect(0,0,1,.02); g.fillRect(0,0,.02,1);
+  g.fillStyle='#141414'; dot(g,.5,.5,.03);
   if(v===1){
-    g.strokeStyle='#141d26'; g.lineWidth=.05; g.lineCap='round';
+    g.strokeStyle='#101010'; g.lineWidth=.05; g.lineCap='round';
     g.beginPath(); g.moveTo(0,.5); g.lineTo(.28,.5); g.lineTo(.42,.36); g.stroke();
-    g.fillStyle='#1b2530'; dot(g,.44,.34,.045);
+    g.fillStyle='#181818'; dot(g,.44,.34,.045);
   }
 }
 function dShTop(g){
@@ -1650,12 +1657,12 @@ function dShLeft(g){
 function dWall(g,v){
   v=v||0; const r=rng(v*131+7);
   const gr=g.createLinearGradient(0,0,1,1);
-  gr.addColorStop(0,'#7d8a97'); gr.addColorStop(1,'#4b5662');
+  gr.addColorStop(0,'#a2a2a2'); gr.addColorStop(1,'#5c5c5c');
   g.fillStyle=gr; g.fillRect(0,0,1,1);
   g.globalAlpha=.07;
   for(let i=0;i<16;i++){ g.fillStyle=r()<.5?'#fff':'#000'; g.fillRect(0,r(),1,.006+r()*.01); }
   g.globalAlpha=1;
-  bevel(g,.06,'#b3bfca','#262d34');
+  bevel(g,.06,'#d6d6d6','#2a2a2a');
   g.strokeStyle='rgba(18,23,28,.55)'; g.lineWidth=.025; g.strokeRect(.17,.17,.66,.66);
   g.strokeStyle='rgba(255,255,255,.2)'; g.lineWidth=.02; g.strokeRect(.185,.185,.66,.66);
   if(v===3){
@@ -1700,7 +1707,7 @@ function dRam(g){
 function dBase(g,v){
   const r=rng(v*977+13);
   const gr=g.createLinearGradient(0,0,1,1);
-  gr.addColorStop(0,'#3bab64'); gr.addColorStop(1,'#28814a');
+  gr.addColorStop(0,'#22a02c'); gr.addColorStop(1,'#13701c');
   g.fillStyle=gr; g.fillRect(0,0,1,1);
   g.globalAlpha=.09; g.strokeStyle='#0b3a1c'; g.lineWidth=.012;
   g.beginPath();
@@ -1713,7 +1720,7 @@ function dBase(g,v){
     traces.push(horiz?[[0,a],[b,a],[b+.14,a+d],[1,a+d]]:[[a,0],[a,b],[a+d,b+.14],[a+d,1]]);
   }
   g.lineJoin='round'; g.lineCap='round';
-  for(const [col,w] of [['rgba(8,45,22,.55)',.08],['#6fe39a',.042],['rgba(255,255,255,.35)',.012]]){
+  for(const [col,w] of [['rgba(8,45,22,.55)',.08],['#8cf06a',.042],['rgba(255,255,255,.35)',.012]]){
     g.strokeStyle=col; g.lineWidth=w;
     for(const t of traces){
       g.beginPath(); g.moveTo(t[0][0],t[0][1]);
@@ -1910,13 +1917,13 @@ function drawSnik(g,px,py,s,dir,now){
 function drawElec(g,px,py,s,now){
   const cx=px+s/2, cy=py+s/2;
   const gl=g.createRadialGradient(cx,cy,0,cx,cy,s*.5);
-  gl.addColorStop(0,'rgba(150,230,255,.7)'); gl.addColorStop(.5,'rgba(80,170,255,.2)'); gl.addColorStop(1,'rgba(80,170,255,0)');
+  gl.addColorStop(0,'rgba(255,245,160,.75)'); gl.addColorStop(.5,'rgba(255,210,60,.22)'); gl.addColorStop(1,'rgba(255,210,60,0)');
   g.fillStyle=gl; g.fillRect(px,py,s,s);
   g.lineCap='round';
   const a0=now/140;
   for(let k=0;k<5;k++){
     const a=a0+k*Math.PI*2/5;
-    g.strokeStyle=k%2?'#c8f3ff':'#5fc6ff'; g.lineWidth=Math.max(1,s*.03);
+    g.strokeStyle=k%2?'#fff6c8':'#ffd23a'; g.lineWidth=Math.max(1,s*.03);
     g.beginPath(); g.moveTo(cx,cy);
     for(let j=1;j<=3;j++){
       const rad=s*.14*j, jit=(Math.random()-.5)*.6;
@@ -1929,7 +1936,7 @@ function drawElec(g,px,py,s,now){
     g.fillStyle='#ffffff'; dot(g,cx+Math.cos(a)*s*.32,cy+Math.sin(a)*s*.32,s*.04);
   }
   const cg=g.createRadialGradient(cx,cy,0,cx,cy,s*.14);
-  cg.addColorStop(0,'#ffffff'); cg.addColorStop(1,'#7fd8ff');
+  cg.addColorStop(0,'#ffffff'); cg.addColorStop(1,'#ffe066');
   g.fillStyle=cg; dot(g,cx,cy,s*.13);
 }
 function drawInfoElectrons(g,px,py,s,rot,now){
@@ -1987,8 +1994,12 @@ function burst(x,y,n,colors,spd,size,grav,life){
   }
   if(parts.length>700) parts.splice(0,parts.length-700);
 }
+// Expanding glow ring, radius in cells.
+function ring(x,y,rgb,r0,r1,life){ if(!reduceMotion) rings.push({x:x+.5,y:y+.5,rgb,r0,r1,life,age:0}); }
 function updParts(dt){
   const k=dt/1000;
+  for(const r of rings) r.age+=dt; rings=rings.filter(r=>r.age<r.life);
+  if(flash){ flash.a-=dt/400; if(flash.a<=0) flash=null; }
   for(const p of parts){ p.age+=dt; p.x+=p.vx*k; p.y+=p.vy*k; p.vy+=p.g*k; p.vx*=.97; }
   parts=parts.filter(p=>p.age<p.life);
 }
@@ -1999,6 +2010,12 @@ function drawParts(ox,oy){
     ctx.fillRect(p.x*T+ox-sz/2,p.y*T+oy-sz/2,sz,sz);
   }
   ctx.globalAlpha=1;
+  for(const r of rings){
+    const t=r.age/r.life, rad=(r.r0+(r.r1-r.r0)*(1-(1-t)*(1-t)))*T;
+    ctx.strokeStyle='rgba('+r.rgb+','+(1-t)*.8+')'; ctx.lineWidth=Math.max(2,T*.12*(1-t));
+    ctx.beginPath(); ctx.arc(r.x*T+ox,r.y*T+oy,rad,0,Math.PI*2); ctx.stroke();
+  }
+  if(flash&&!reduceMotion){ ctx.fillStyle='rgba('+flash.c+','+flash.a+')'; ctx.fillRect(0,0,vw,vh); }
 }
 
 /* ---------- Rendering ---------- */
@@ -2015,8 +2032,8 @@ function layout(){
   vg.fillStyle=gr; vg.fillRect(0,0,vw,vh);
   padInsets();
   if(!W) return;
-  const min=Math.min(vw,vh)<600?32:40;
-  T=clamp(Math.floor(Math.min((vw-ins.l-ins.r)/W,(vh-ins.b)/H)),min,64);
+  const min=Math.min(vw,vh)<600?40:52;
+  T=clamp(Math.floor(Math.min((vw-ins.l-ins.r)/W,(vh-ins.b)/H)),min,80);
   const key=T+'@'+dpr;
   if(key!==spriteKey){ spriteKey=key; buildSprites(); }
   camSnap=true;
@@ -2060,7 +2077,7 @@ function drawEaten(alpha,ox,oy){
 }
 function render(alpha,now,dt){
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle='#070a0e'; ctx.fillRect(0,0,vw,vh);
+  ctx.fillStyle='#000000'; ctx.fillRect(0,0,vw,vh);
   if(!grid||!spr) return;
 
   // Centre Murphy in the part of the stage the touch controls leave clear, and let the camera scroll
