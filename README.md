@@ -20,6 +20,10 @@ A zonk landing on any enemy destroys it. Boards 36-39 introduce the new ones.
 - X: drop a red disk
 - R: restart · Esc: boards · M: music · N: sound
 
+## Players
+
+Set your name in the Boards menu. Best times are kept per player in this browser; the win screen ranks everyone on this device for each board.
+
 To run locally, open `index.html` in a browser.
 
 To check the engine headlessly (boards load and settle, enemy behaviour), run `node test/harness.js`.

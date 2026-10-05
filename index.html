@@ -40,6 +40,14 @@ button{font:inherit;color:inherit;cursor:pointer}
 .btn{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font-size:13px;font-weight:600;letter-spacing:.02em}
 .btn:hover{border-color:#36444f}
 .btn.primary{background:var(--amber);border-color:var(--amber);color:#1a1205}
+.btn.chip{background:#0a0f13;padding:5px 10px;font-size:12px;font-weight:400}
+.btn.chip.cur{border-color:var(--amber);color:var(--amber)}
+.val.player{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
+.field{background:#0a0f13;border:1px solid var(--line);border-radius:6px;padding:7px 10px;color:var(--ink);font:inherit;font-size:16px;width:min(240px,100%);box-sizing:border-box}
+.player{display:flex;flex-direction:column;gap:8px}
+.top{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-variant-numeric:tabular-nums}
+.top li{display:grid;grid-template-columns:2ch 1fr auto;gap:10px;font-size:13px;color:var(--dim)}
+.top li.me{color:var(--amber)}
 :focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 #stage{position:relative;min-height:0;border:3px solid #6b6b6b;border-color:#9a9a9a #3e3e3e #3e3e3e #9a9a9a;border-radius:4px;overflow:hidden;background:#000}
 #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
@@ -81,7 +89,7 @@ kbd{font-family:var(--display);font-size:10.5px;border:1px solid #2c3742;border-
 #pad{display:none}
 html.touch,html.touch body{overscroll-behavior:none}
 html.touch #app{max-width:none;gap:6px;padding:6px max(8px,env(safe-area-inset-right)) 6px max(8px,env(safe-area-inset-left));grid-template-rows:auto minmax(0,1fr)}
-html.touch .help,html.touch .brand,html.touch .actions .btn:not(#bMenu),html.touch .stat.sdisks{display:none}
+html.touch .help,html.touch .brand,html.touch .actions .btn:not(#bMenu),html.touch .stat.sdisks,html.touch .stat.splayer{display:none}
 html.touch .bar{flex-wrap:nowrap;gap:10px}
 html.touch .hud{flex-wrap:nowrap;gap:16px;min-width:0}
 html.touch .lbl{font-size:9px;letter-spacing:.12em}
@@ -130,6 +138,7 @@ html.touch #pad{display:block;position:absolute;inset:0;pointer-events:none;z-in
       <div class="stat"><span class="lbl">Board</span><span class="val" id="hLevel">01</span></div>
       <div class="stat"><span class="lbl"><span class="xl">Infotrons </span>needed</span><span class="val need" id="hNeed">00</span></div>
       <div class="stat sdisks"><span class="lbl">Red disks</span><span class="val" id="hDisks">0</span></div>
+      <div class="stat splayer"><span class="lbl">Player</span><span class="val player" id="hPlayer"></span></div>
       <div class="stat"><span class="lbl">Time</span><span class="val" id="hTime">0:00</span></div>
     </div>
     <div class="actions">
@@ -1184,14 +1193,31 @@ function kickMove(){ if(state==='play'&&m&&m.mt!==tick&&acc>TICK*.3) acc=TICK; }
 
 /* ---------- Saved progress (per browser) ---------- */
 const SAVE_KEY='infotron-run-v1';
-let save={unlocked:1,best:{}};
+let save={unlocked:1,v:3,user:'Guest',players:[{name:'Guest',best:{}}]};
 try{ const s=JSON.parse(localStorage.getItem(SAVE_KEY)); if(s&&typeof s.unlocked==='number') save=s; }catch(e){}
 function persist(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(save)); }catch(e){} }
 // Migrate from TICK=120 to TICK=170: scale best times to keep wall-clock time the same
-if(save.v!==2){
+if(!(save.v>=2)){
   for(const k in save.best) save.best[k]=Math.round(save.best[k]*120/170);
   save.v=2; persist();
 }
+// Migrate to multi-player structure
+if(save.v!==3){
+  const legacy=save.best&&typeof save.best==='object'?save.best:{};
+  if(!Array.isArray(save.players)||!save.players.length) save.players=[{name:'Guest',best:legacy}];
+  save.user=save.players[0].name;
+  delete save.best;
+  save.v=3; persist();
+}
+const MAXNAME=12;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function cleanName(s){ return String(s||'').replace(/[<>&"'`\\]/g,'').replace(/\s+/g,' ').trim().slice(0,MAXNAME); }
+function findPlayer(n){ const k=n.toLowerCase(); return save.players.find(p=>p.name.toLowerCase()===k); }
+function curPlayer(){ let p=findPlayer(save.user||''); if(!p){ p=save.players[0]||(save.players[0]={name:'Guest',best:{}}); save.user=p.name; } return p; }
+function setPlayer(raw){ const n=cleanName(raw); if(!n) return false; let p=findPlayer(n); if(!p){ p={name:n,best:{}}; save.players.push(p); } save.user=p.name; persist(); updatePlayerHud(); return true; }
+const bestOf=i=>curPlayer().best[i];
+function boardTimes(i){ return save.players.filter(p=>p.best[i]).map(p=>({name:p.name,t:p.best[i]})).sort((a,b)=>a.t-b.t); }
+function updatePlayerHud(){ const el=$('hPlayer'); if(el) el.textContent=curPlayer().name; }
 
 /* ---------- Sound ---------- */
 // Everything you hear is synthesised live with the Web Audio API; there are no audio files.
@@ -2535,16 +2561,19 @@ function showMenu(){
   playMusic(0);
   const paused=state==='paused';
   // Every board is open from the start; the first one not yet cleared gets the focus.
-  let top=LEVELS.findIndex((L,i)=>!save.best[i]); if(top<0) top=0;
+  let top=LEVELS.findIndex((L,i)=>!bestOf(i)); if(top<0) top=0;
   const lv=LEVELS.map((L,i)=>{
-    const b=save.best[i];
+    const b=bestOf(i);
     const meta=L.need+' infotrons &middot; '+(b?'best '+fmt(b):'not cleared yet');
     return '<li><button type="button" class="lvl" data-level="'+i+'"'+(!paused&&i===top?' data-primary':'')+
       '><span class="num">'+pad2(i+1)+'</span><span class="nm">'+L.name+'</span><span class="meta">'+meta+'</span></button></li>';
   }).join('');
+  const playerForm='<form class="player" id="playerForm" autocomplete="off"><label class="eyebrow" for="pName">Player</label><div class="row"><input id="pName" class="field" maxlength="12" value="'+esc(curPlayer().name)+'" placeholder="Your name" enterkeyhint="done" autocapitalize="words" spellcheck="false"><button class="btn primary" type="submit">Set name</button></div>'+(save.players.length>1?'<div class="row chips">'+save.players.map(p=>'<button type="button" class="btn chip'+(p.name===curPlayer().name?' cur':'')+'" data-player="'+esc(p.name)+'">'+esc(p.name)+'</button>').join('')+'</div>':'')+
+    '</form>';
   showOverlay('<div class="card">'+
     '<h1 class="logo">INFOTRON <span>RUN</span></h1>'+
     '<p class="lede">Guide Murphy across the circuit board. Collect enough infotrons to open the exit, and keep out from under falling zonks.</p>'+
+    playerForm+
     (paused?'<div class="row"><button type="button" class="btn primary" data-act="resume" data-primary>Resume board '+pad2(li+1)+'</button>'+
       '<button type="button" class="btn" data-act="retry">Restart board</button></div>':'')+
     '<div class="row"><button type="button" class="btn" data-act="music">'+(musicOn?'Music on':'Music off')+'</button>'+
@@ -2564,14 +2593,16 @@ function showDead(){
     '<button type="button" class="btn" data-act="menu">Boards</button></div></div>');
 }
 function showWin(){
-  const t=playTicks, prev=save.best[li], rec=!prev||t<prev;
-  if(rec) save.best[li]=t;
+  const t=playTicks, prev=curPlayer().best[li], rec=!prev||t<prev;
+  if(rec) curPlayer().best[li]=t;
   save.unlocked=Math.max(save.unlocked,Math.min(LEVELS.length,li+2));
   persist();
   const lastBoard=li===LEVELS.length-1;
-  showOverlay('<div class="card small"><p class="eyebrow">Board '+pad2(li+1)+' &middot; '+LEVELS[li].name+'</p>'+
+  const ranking='<p class="eyebrow">Best times on this board</p><ol class="top">'+boardTimes(li).slice(0,5).map((r,k)=>'<li'+(r.name===curPlayer().name?' class="me"':'')+'><span>'+(k+1)+'</span><span>'+esc(r.name)+'</span><span>'+fmt(r.t)+'</span></li>').join('')+'</ol>';
+  showOverlay('<div class="card small"><p class="eyebrow">Board '+pad2(li+1)+' &middot; '+LEVELS[li].name+' &middot; '+esc(curPlayer().name)+'</p>'+
     '<h2>'+(lastBoard?'Mainframe cleared':'Board cleared')+'</h2>'+
     '<p>Time '+fmt(t)+(rec?(prev?' &middot; new best':''):' &middot; best '+fmt(prev))+'. Infotrons: '+got+' collected, '+need+' needed.</p>'+
+    ranking+
     (lastBoard?'<p>That was the last board. Go back and beat your times.</p>':'')+
     '<div class="row">'+
       (lastBoard?'':'<button type="button" class="btn primary" data-act="next" data-primary>Next board</button>')+
@@ -2602,6 +2633,7 @@ function startLevel(i){
 overlay.addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b||b.disabled) return;
   ensureAudio();
+  if(b.dataset.player!==undefined){ setPlayer(b.dataset.player); showMenu(); return; }
   if(b.dataset.level!==undefined){ startLevel(+b.dataset.level); return; }
   switch(b.dataset.act){
     case 'resume': hideOverlay(); state='play'; playMusic(li+1); break;
@@ -2612,9 +2644,11 @@ overlay.addEventListener('click',e=>{
     case 'sound':  toggleSound(); b.textContent=soundOn?'Sound on':'Sound off'; break;
   }
 });
+overlay.addEventListener('submit',e=>{ e.preventDefault(); if(e.target.id==='playerForm'){ setPlayer($('pName').value); showMenu(); } });
 
 const KEYDIR={ArrowUp:0,KeyW:0,ArrowRight:1,KeyD:1,ArrowDown:2,KeyS:2,ArrowLeft:3,KeyA:3};
 addEventListener('keydown',e=>{
+  if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')) return;
   ensureAudio();
   // A real keyboard is in use (desktop, or a tablet with one attached): switch to the keyboard layout.
   if(!e.repeat&&(e.code in KEYDIR||e.code==='Space'||e.code==='KeyX')) setTouch(false);
@@ -2641,6 +2675,7 @@ addEventListener('keydown',e=>{
   if(e.code==='Escape'){ e.preventDefault(); showMenu(); }
 });
 addEventListener('keyup',e=>{
+  if(e.target&&(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')) return;
   if(e.code in KEYDIR) input.release(KEYDIR[e.code]);
   if(e.code==='Space'){ input.snap=false; updatePadSnap(); }
 });
@@ -2752,6 +2787,7 @@ new ResizeObserver(layout).observe(stage);
 if(document.fonts&&document.fonts.ready) document.fonts.ready.then(()=>{ spriteKey=''; layout(); });
 
 /* ---------- Boot ---------- */
+updatePlayerHud();
 load(0);
 state='menu';
 showMenu();
