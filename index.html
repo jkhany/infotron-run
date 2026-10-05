@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600&family=Silkscreen:wght@400;700&display=swap">
 <style>
-/* Layout: one-screen arcade cabinet. HUD strip on top, the circuit board fills the rest, touch pad below on phones. */
+/* Layout: one-screen arcade cabinet. HUD strip on top, the circuit board fills the rest; on touch screens the controls float over the board. */
 :root{
   --ground:#05070a;
   --panel:#0d1217;
@@ -20,6 +20,7 @@
 }
 [hidden]{display:none!important}
 html,body{height:100%}
+@supports (height:100dvh){ html,body{height:100dvh} }
 body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);font-size:15px;overflow:hidden;-webkit-tap-highlight-color:transparent}
 #app{height:100%;box-sizing:border-box;display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:10px;padding-inline:16px;padding-block:12px;max-width:1400px;margin:0 auto}
 .bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 24px}
@@ -73,17 +74,47 @@ kbd{font-family:var(--display);font-size:10.5px;border:1px solid #2c3742;border-
 .card h2{margin:0;font-family:var(--display);font-size:24px;line-height:1.1;font-weight:700;text-wrap:balance}
 .card p{margin:0;line-height:1.5}
 .help{margin:0;font-size:12.5px;color:var(--dim)}
-.pad{display:none}
-@media (pointer:coarse){
-  .help{display:none}
-  .pad{display:flex;justify-content:space-between;align-items:center;gap:16px;user-select:none;-webkit-user-select:none;touch-action:manipulation}
-}
-.dpad{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(3,50px);gap:4px}
-.dpad button,.acts button{background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:18px;touch-action:none}
-.dpad .up{grid-column:2;grid-row:1}.dpad .left{grid-column:1;grid-row:2}.dpad .right{grid-column:3;grid-row:2}.dpad .down{grid-column:2;grid-row:3}
-.acts{display:flex;flex-direction:column;gap:8px}
-.acts button{width:96px;height:50px;font-family:var(--display);font-size:13px}
-.dpad button.on,.acts button.on{border-color:var(--amber);color:var(--amber)}
+/* ---------- Touch mode ----------
+   JS adds html.touch when the game is played by touch (and drops it again if a keyboard takes over).
+   The board fills the screen, the HUD shrinks to one line, and translucent controls float over the
+   board's bottom corners. layout() keeps Murphy and the board's edges out from under them. */
+#pad{display:none}
+html.touch,html.touch body{overscroll-behavior:none}
+html.touch #app{max-width:none;gap:6px;padding:6px max(8px,env(safe-area-inset-right)) 6px max(8px,env(safe-area-inset-left));grid-template-rows:auto minmax(0,1fr)}
+html.touch .help,html.touch .brand,html.touch .actions .btn:not(#bMenu),html.touch .stat.sdisks{display:none}
+html.touch .bar{flex-wrap:nowrap;gap:10px}
+html.touch .hud{flex-wrap:nowrap;gap:16px;min-width:0}
+html.touch .lbl{font-size:9px;letter-spacing:.12em}
+html.touch .lbl .xl{display:none}
+html.touch .val{font-size:15px}
+html.touch .btn{touch-action:manipulation}
+html.touch #bMenu{padding:8px 14px}
+html.touch #stage{border-radius:6px;touch-action:none}
+/* Murphy always starts at the top, so on touch screens the hint sits low, in the clear area just above the controls. */
+html.touch .toast{top:auto;bottom:calc(var(--ib,0px) + 8px);left:calc(var(--il,0px) + 8px);right:calc(var(--ir,0px) + 8px);padding:8px 12px;font-size:13px}
+html.touch #pad{display:block;position:absolute;inset:0;pointer-events:none;z-index:1;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  --stick:clamp(118px,32vmin,160px);--tb:clamp(56px,16vmin,70px)}
+#overlay:not([hidden]) ~ #pad{visibility:hidden}
+.stick{position:absolute;left:10px;bottom:10px;width:var(--stick);height:var(--stick);border-radius:50%;box-sizing:border-box;
+  background:radial-gradient(circle,rgba(13,18,23,.2) 0 32%,rgba(13,18,23,.5) 72%);border:1px solid rgba(217,228,234,.18);
+  pointer-events:auto;touch-action:none;opacity:.72;transition:opacity .15s}
+.stick.on{opacity:1}
+.stick b{position:absolute;font-size:15px;line-height:1;color:rgba(217,228,234,.6);transform:translate(-50%,-50%)}
+.stick b[data-d="0"]{left:50%;top:15%}.stick b[data-d="1"]{left:85%;top:50%}.stick b[data-d="2"]{left:50%;top:85%}.stick b[data-d="3"]{left:15%;top:50%}
+.stick b.on{color:var(--amber)}
+.knob{position:absolute;left:50%;top:50%;width:38%;height:38%;border-radius:50%;transform:translate(-50%,-50%);
+  background:rgba(217,228,234,.14);border:1px solid rgba(217,228,234,.25)}
+.stick.on .knob{background:rgba(255,178,62,.22);border-color:rgba(255,178,62,.6)}
+.btns{position:absolute;right:10px;bottom:10px;display:grid;grid-template-columns:var(--tb) var(--tb);grid-template-rows:var(--tb) var(--tb);gap:8px;pointer-events:none}
+.tb{pointer-events:auto;touch-action:none;width:var(--tb);height:var(--tb);border-radius:50%;position:relative;padding:0;
+  background:rgba(13,18,23,.5);border:1px solid rgba(217,228,234,.2);color:var(--ink);font-family:var(--display);font-size:12px;letter-spacing:.05em;opacity:.78}
+#tSnap{grid-column:1;grid-row:2}
+#tDisk{grid-column:2;grid-row:1}
+.tb.on{opacity:1;border-color:var(--amber);color:var(--amber);box-shadow:0 0 14px rgba(255,178,62,.35)}
+#tDisk.empty{opacity:.35}
+#tDisk[data-n]::after{content:attr(data-n);position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;
+  border-radius:9px;background:var(--murphy);color:#fff;font:600 11px/18px var(--body);letter-spacing:0}
 @media (max-width:640px){
   .brand{font-size:16px}
   .val{font-size:15px}
@@ -97,8 +128,8 @@ kbd{font-family:var(--display);font-size:10.5px;border:1px solid #2c3742;border-
     <div class="brand"><i aria-hidden="true"></i>INFOTRON <b>RUN</b></div>
     <div class="hud">
       <div class="stat"><span class="lbl">Board</span><span class="val" id="hLevel">01</span></div>
-      <div class="stat"><span class="lbl">Infotrons needed</span><span class="val need" id="hNeed">00</span></div>
-      <div class="stat"><span class="lbl">Red disks</span><span class="val" id="hDisks">0</span></div>
+      <div class="stat"><span class="lbl"><span class="xl">Infotrons </span>needed</span><span class="val need" id="hNeed">00</span></div>
+      <div class="stat sdisks"><span class="lbl">Red disks</span><span class="val" id="hDisks">0</span></div>
       <div class="stat"><span class="lbl">Time</span><span class="val" id="hTime">0:00</span></div>
     </div>
     <div class="actions">
@@ -112,20 +143,15 @@ kbd{font-family:var(--display);font-size:10.5px;border:1px solid #2c3742;border-
     <canvas id="cv" aria-label="Game board"></canvas>
     <div class="toast gone" id="toast" aria-live="polite"></div>
     <div id="overlay" hidden></div>
+    <div id="pad">
+      <div class="stick" id="stick" role="group" aria-label="Move"><span class="knob" id="knob"></span><b data-d="0">&#9650;</b><b data-d="1">&#9654;</b><b data-d="2">&#9660;</b><b data-d="3">&#9664;</b></div>
+      <div class="btns" id="btns">
+        <button type="button" class="tb" id="tSnap" aria-label="Eat without moving">EAT</button>
+        <button type="button" class="tb empty" id="tDisk" aria-label="Drop red disk">DISK</button>
+      </div>
+    </div>
   </main>
   <p class="help"><kbd>Arrows</kbd>/<kbd>WASD</kbd> move &middot; hold against a zonk to push &middot; <kbd>Space</kbd>+arrow eats without moving &middot; <kbd>X</kbd> drops a red disk &middot; <kbd>R</kbd> restart &middot; <kbd>Esc</kbd> boards &middot; <kbd>M</kbd> music &middot; <kbd>N</kbd> sound effects</p>
-  <div class="pad" id="pad">
-    <div class="dpad">
-      <button type="button" class="up" data-dir="0" aria-label="Up">&#9650;</button>
-      <button type="button" class="left" data-dir="3" aria-label="Left">&#9664;</button>
-      <button type="button" class="right" data-dir="1" aria-label="Right">&#9654;</button>
-      <button type="button" class="down" data-dir="2" aria-label="Down">&#9660;</button>
-    </div>
-    <div class="acts">
-      <button type="button" id="tSnap">SNAP</button>
-      <button type="button" id="tDisk">DISK</button>
-    </div>
-  </div>
 </div>
 <script>
 (() => {
@@ -826,6 +852,7 @@ const OOB={t:WALL};
 const $=id=>document.getElementById(id);
 const stage=$('stage'), cv=$('cv'), ctx=cv.getContext('2d'), overlay=$('overlay'), toast=$('toast');
 const hLevel=$('hLevel'), hNeed=$('hNeed'), hDisks=$('hDisks'), hTime=$('hTime');
+const stick=$('stick'), knob=$('knob'), btns=$('btns'), tSnap=$('tSnap'), tDisk=$('tDisk');
 const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const pad2=n=>String(n).padStart(2,'0');
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -835,9 +862,10 @@ let W=0, H=0, grid=null, m=null, li=0, need=0, got=0, tick=0, playTicks=0, acc=0
 let pending=[], state='menu', deadTimer=0, exitOpen=false, dropReq=false;
 let T=32, dpr=1, vw=1, vh=1, spr=null, spriteKey='', cam={x:0,y:0}, camSnap=true, shake=0;
 let parts=[], vig=null;
+let touchMode=false, ins={l:0,r:0,b:0};   // ins: board area hidden under the touch controls, in CSS pixels
 
 // Start Murphy's move right away when a key is pressed while he's standing still.
-function kick(){ if(state==='play'&&m&&m.mt!==tick&&acc>TICK*.3) acc=TICK; }
+function kickMove(){ if(state==='play'&&m&&m.mt!==tick&&acc>TICK*.3) acc=TICK; }
 
 /* ---------- Saved progress (per browser) ---------- */
 const SAVE_KEY='infotron-run-v1';
@@ -1094,8 +1122,6 @@ function toggleSound(){
   try{ localStorage.setItem('infotron-run-sound',soundOn?'on':'off'); }catch(e){}
   if(soundOn) ensureAudio();
   $('bSound').textContent=soundOn?'Sound on':'Sound off';
-$('bMusic').addEventListener('click',e=>{ toggleMusic(); e.currentTarget.blur(); });
-$('bMusic').textContent=musicOn?'Music on':'Music off';
 }
 function toggleMusic(){
   musicOn=!musicOn;
@@ -1313,7 +1339,10 @@ function updateHud(){
   hLevel.textContent=pad2(li+1);
   hNeed.textContent=left>0?pad2(left):'OPEN';
   hNeed.classList.toggle('open',left===0);
-  hDisks.textContent=m?m.disks:0;
+  const n=m?m.disks:0;
+  hDisks.textContent=n;
+  if(n>0) tDisk.dataset.n=n; else delete tDisk.dataset.n;
+  tDisk.classList.toggle('empty',n===0);
   hTime.textContent=fmt(playTicks);
 }
 
@@ -1729,12 +1758,24 @@ function layout(){
   const gr=vg.createRadialGradient(vw/2,vh/2,Math.min(vw,vh)*.35,vw/2,vh/2,Math.max(vw,vh)*.75);
   gr.addColorStop(0,'rgba(0,0,0,0)'); gr.addColorStop(1,'rgba(0,0,0,.42)');
   vg.fillStyle=gr; vg.fillRect(0,0,vw,vh);
+  padInsets();
   if(!W) return;
-  const min=vw<600?32:40;
-  T=clamp(Math.floor(Math.min(vw/W,vh/H)),min,64);
+  const min=Math.min(vw,vh)<600?32:40;
+  T=clamp(Math.floor(Math.min((vw-ins.l-ins.r)/W,(vh-ins.b)/H)),min,64);
   const key=T+'@'+dpr;
   if(key!==spriteKey){ spriteKey=key; buildSprites(); }
   camSnap=true;
+}
+// How much of the board the floating touch controls cover. Upright screens give up a strip along the
+// bottom; wide screens give up the two sides instead, since height is what they are short of.
+function padInsets(){
+  ins={l:0,r:0,b:0};
+  if(!touchMode) return;
+  const s=stage.getBoundingClientRect(), a=stick.getBoundingClientRect(), b=btns.getBoundingClientRect();
+  if(!a.width||!b.width) return;
+  if(s.width>s.height*1.15){ ins.l=Math.max(0,a.right-s.left+4); ins.r=Math.max(0,s.right-b.left+4); }
+  else ins.b=Math.max(0,s.bottom-Math.min(a.top,b.top)+4);
+  stage.style.setProperty('--il',ins.l+'px'); stage.style.setProperty('--ir',ins.r+'px'); stage.style.setProperty('--ib',ins.b+'px');
 }
 function lerpPos(o,x,y,a){
   if(o.mt===tick&&o.fx!==undefined) return {x:o.fx+(x-o.fx)*a, y:o.fy+(y-o.fy)*a};
@@ -1767,9 +1808,11 @@ function render(alpha,now,dt){
   ctx.fillStyle='#070a0e'; ctx.fillRect(0,0,vw,vh);
   if(!grid||!spr) return;
 
-  const mp=lerpPos(m,m.x,m.y,alpha), ww=W*T, wh=H*T;
-  const tx=ww<=vw?(ww-vw)/2:clamp(mp.x*T+T/2-vw/2,0,ww-vw);
-  const ty=wh<=vh?(wh-vh)/2:clamp(mp.y*T+T/2-vh/2,0,wh-vh);
+  // Centre Murphy in the part of the stage the touch controls leave clear, and let the camera scroll
+  // far enough that every edge of the board can be brought out from under them.
+  const mp=lerpPos(m,m.x,m.y,alpha), ww=W*T, wh=H*T, rw=vw-ins.l-ins.r, rh=vh-ins.b;
+  const tx=ww<=rw?(ww-rw)/2-ins.l:clamp(mp.x*T+T/2-ins.l-rw/2,-ins.l,ww-vw+ins.r);
+  const ty=wh<=rh?(wh-rh)/2:clamp(mp.y*T+T/2-rh/2,0,wh-vh+ins.b);
   if(camSnap){ cam.x=tx; cam.y=ty; camSnap=false; }
   else { const k=1-Math.exp(-(dt||16)/110); cam.x+=(tx-cam.x)*k; cam.y+=(ty-cam.y)*k; }
   let ox=-cam.x, oy=-cam.y;
@@ -1877,7 +1920,7 @@ const LEGEND=[
   ['snik','Snik snak','Follows walls, deadly'],
   ['elec','Electron','Bursts into infotrons'],
   ['odisk','Orange disk','Explodes when it lands'],
-  ['rdisk','Red disk','Pick up, drop with X'],
+  ['rdisk','Red disk','Pick up, drop with X'],   // touchText() swaps the keys for the touch buttons
   ['port','Port','Pass through the arrow way'],
 ];
 function drawIcon(c,k){
@@ -1902,7 +1945,7 @@ function fillLegend(){
   const el=$('legend'); if(!el) return;
   const S=Math.round(32*Math.min(window.devicePixelRatio||1,3));
   el.innerHTML=LEGEND.map(([k,n,d])=>
-    '<div class="lg"><canvas data-k="'+k+'" width="'+S+'" height="'+S+'"></canvas><div><strong>'+n+'</strong><span>'+d+'</span></div></div>').join('');
+    '<div class="lg"><canvas data-k="'+k+'" width="'+S+'" height="'+S+'"></canvas><div><strong>'+n+'</strong><span>'+touchText(d)+'</span></div></div>').join('');
   el.querySelectorAll('canvas').forEach(c=>drawIcon(c,c.dataset.k));
 }
 
@@ -1927,10 +1970,15 @@ function showMenu(){
   showOverlay('<div class="card">'+
     '<h1 class="logo">INFOTRON <span>RUN</span></h1>'+
     '<p class="lede">Guide Murphy across the circuit board. Collect enough infotrons to open the exit, and keep out from under falling zonks.</p>'+
-    (paused?'<div class="row"><button type="button" class="btn primary" data-act="resume" data-primary>Resume board '+pad2(li+1)+'</button></div>':'')+
+    (paused?'<div class="row"><button type="button" class="btn primary" data-act="resume" data-primary>Resume board '+pad2(li+1)+'</button>'+
+      '<button type="button" class="btn" data-act="retry">Restart board</button></div>':'')+
+    '<div class="row"><button type="button" class="btn" data-act="music">'+(musicOn?'Music on':'Music off')+'</button>'+
+      '<button type="button" class="btn" data-act="sound">'+(soundOn?'Sound on':'Sound off')+'</button></div>'+
     '<h2 class="sub">Boards</h2><ol class="levels">'+lv+'</ol>'+
     '<h2 class="sub">On the board</h2><div class="legend" id="legend"></div>'+
-    '<p class="keys"><kbd>Arrows</kbd>/<kbd>WASD</kbd> move &middot; hold against a zonk to push &middot; <kbd>Space</kbd>+arrow eats without moving &middot; <kbd>X</kbd> drops a red disk &middot; <kbd>R</kbd> restart &middot; <kbd>Esc</kbd> boards. On a phone, use the pad below the board.</p>'+
+    (touchMode
+      ?'<p class="keys">Drag the pad on the left to move, and hold it to keep going or to push a zonk &middot; tap <kbd>EAT</kbd>, then a direction, to eat without moving &middot; <kbd>DISK</kbd> drops a red disk &middot; <kbd>Pause</kbd> brings you back here.</p>'
+      :'<p class="keys"><kbd>Arrows</kbd>/<kbd>WASD</kbd> move &middot; hold against a zonk to push &middot; <kbd>Space</kbd>+arrow eats without moving &middot; <kbd>X</kbd> drops a red disk &middot; <kbd>R</kbd> restart &middot; <kbd>Esc</kbd> boards &middot; <kbd>M</kbd> music &middot; <kbd>N</kbd> sound.</p>')+
   '</div>');
   fillLegend();
 }
@@ -1957,10 +2005,16 @@ function showWin(){
     '</div></div>');
 }
 
+// Hints and the legend are written for the keyboard; on touch screens name the on-screen buttons instead.
+function touchText(s){
+  if(!touchMode) return s;
+  return s.replace(/press X/g,'tap DISK').replace(/with X/g,'with DISK').replace(/Space\+arrow/g,'EAT then a direction');
+}
 let toastTimer=0;
-function showToast(){
+function showToast(keepTimer){
   const L=LEVELS[li];
-  toast.innerHTML='<p class="eyebrow">Board '+pad2(li+1)+' &middot; '+L.name+'</p><p>'+L.hint+'</p>';
+  toast.innerHTML='<p class="eyebrow">Board '+pad2(li+1)+' &middot; '+L.name+'</p><p>'+touchText(L.hint)+'</p>';
+  if(keepTimer) return;
   toast.classList.remove('gone');
   clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>toast.classList.add('gone'),6500);
@@ -1979,12 +2033,16 @@ overlay.addEventListener('click',e=>{
     case 'retry':  startLevel(li); break;
     case 'next':   startLevel(li+1); break;
     case 'menu':   showMenu(); break;
+    case 'music':  toggleMusic(); b.textContent=musicOn?'Music on':'Music off'; break;
+    case 'sound':  toggleSound(); b.textContent=soundOn?'Sound on':'Sound off'; break;
   }
 });
 
 const KEYDIR={ArrowUp:0,KeyW:0,ArrowRight:1,KeyD:1,ArrowDown:2,KeyS:2,ArrowLeft:3,KeyA:3};
 addEventListener('keydown',e=>{
   ensureAudio();
+  // A real keyboard is in use (desktop, or a tablet with one attached): switch to the keyboard layout.
+  if(!e.repeat&&(e.code in KEYDIR||e.code==='Space'||e.code==='KeyX')) setTouch(false);
   if(e.code==='KeyM'){ toggleMusic(); return; }
   if(e.code==='KeyN'){ toggleSound(); return; }
   if(!overlay.hidden){
@@ -2001,7 +2059,7 @@ addEventListener('keydown',e=>{
     }
     return;
   }
-  if(e.code in KEYDIR){ e.preventDefault(); if(!e.repeat){ input.press(KEYDIR[e.code]); kick(); } return; }
+  if(e.code in KEYDIR){ e.preventDefault(); if(!e.repeat){ input.press(KEYDIR[e.code]); kickMove(); } return; }
   if(e.code==='Space'){ e.preventDefault(); input.snap=true; return; }
   if(e.code==='KeyX'){ e.preventDefault(); if(!e.repeat) dropReq=true; return; }
   if(e.code==='KeyR'){ e.preventDefault(); startLevel(li); return; }
@@ -2009,7 +2067,7 @@ addEventListener('keydown',e=>{
 });
 addEventListener('keyup',e=>{
   if(e.code in KEYDIR) input.release(KEYDIR[e.code]);
-  if(e.code==='Space') input.snap=false;
+  if(e.code==='Space'){ input.snap=false; updatePadSnap(); }
 });
 addEventListener('blur',()=>input.clear());
 
@@ -2020,22 +2078,81 @@ $('bSound').textContent=soundOn?'Sound on':'Sound off';
 $('bMusic').addEventListener('click',e=>{ toggleMusic(); e.currentTarget.blur(); });
 $('bMusic').textContent=musicOn?'Music on':'Music off';
 
-const tSnap=$('tSnap');
-function updatePadSnap(){ tSnap.classList.toggle('on',!!input.snapOnce); }
-document.querySelectorAll('.dpad button').forEach(b=>{
-  const d=+b.dataset.dir;
-  b.addEventListener('pointerdown',e=>{
-    e.preventDefault(); ensureAudio();
-    try{ b.setPointerCapture(e.pointerId); }catch(err){}
-    input.press(d); kick(); b.classList.add('on');
-  });
-  const up=()=>{ input.release(d); b.classList.remove('on'); };
-  b.addEventListener('pointerup',up);
-  b.addEventListener('pointercancel',up);
-  b.addEventListener('lostpointercapture',up);
+/* ---------- Touch controls ---------- */
+function updatePadSnap(){ tSnap.classList.toggle('on',!!(input.snapOnce||input.snap)); }
+
+// Switch between the keyboard layout and the touch layout (floating pad, one-line HUD, touch wording).
+function setTouch(on){
+  if(on===touchMode) return;
+  touchMode=on;
+  document.documentElement.classList.toggle('touch',on);
+  $('bMenu').textContent=on?'Pause':'Boards';
+  layout();
+  if(m) showToast(true);
+  if(!overlay.hidden&&overlay.querySelector('.levels')) showMenu();
+}
+
+// The stick is one touch zone: the direction comes from where the finger is relative to its centre,
+// so sliding a thumb round it turns Murphy without lifting.
+let stickId=null, stickDir=-1;
+function setStickDir(d){
+  if(d===stickDir) return;
+  if(stickDir>=0) input.release(stickDir);
+  stickDir=d;
+  stick.querySelectorAll('b').forEach(b=>b.classList.toggle('on',+b.dataset.d===d));
+  if(d>=0){
+    input.press(d); kickMove();
+    try{ if(navigator.vibrate) navigator.vibrate(6); }catch(err){}
+  }
+}
+function stickAt(e){
+  const r=stick.getBoundingClientRect(), dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
+  const dist=Math.hypot(dx,dy);
+  setStickDir(dist<r.width*.12?-1:Math.abs(dx)>Math.abs(dy)?(dx>0?1:3):(dy>0?2:0));
+  const k=Math.min(1,dist/(r.width*.32)), a=Math.atan2(dy,dx), R=r.width*.22;
+  knob.style.transform='translate(-50%,-50%) translate('+(Math.cos(a)*k*R).toFixed(1)+'px,'+(Math.sin(a)*k*R).toFixed(1)+'px)';
+}
+stick.addEventListener('pointerdown',e=>{
+  e.preventDefault(); ensureAudio();
+  if(stickId!==null) return;
+  stickId=e.pointerId;
+  try{ stick.setPointerCapture(e.pointerId); }catch(err){}
+  stick.classList.add('on'); stickAt(e);
 });
-tSnap.addEventListener('pointerdown',e=>{ e.preventDefault(); ensureAudio(); input.snapOnce=!input.snapOnce; updatePadSnap(); });
-$('tDisk').addEventListener('pointerdown',e=>{ e.preventDefault(); ensureAudio(); dropReq=true; });
+stick.addEventListener('pointermove',e=>{ if(e.pointerId===stickId) stickAt(e); });
+const stickUp=e=>{
+  if(e.pointerId!==stickId) return;
+  stickId=null; setStickDir(-1);
+  stick.classList.remove('on'); knob.style.transform='';
+  ensureAudio();   // phones only let audio start on a finger lift, not a touch-down
+};
+stick.addEventListener('pointerup',stickUp);
+stick.addEventListener('pointercancel',stickUp);
+stick.addEventListener('lostpointercapture',stickUp);
+
+// EAT: tap to arm it for the next move, or hold it while steering to keep eating in place. Tap again to disarm.
+tSnap.addEventListener('pointerdown',e=>{
+  e.preventDefault(); ensureAudio();
+  try{ tSnap.setPointerCapture(e.pointerId); }catch(err){}
+  if(input.snapOnce) input.snapOnce=false;
+  else { input.snapOnce=true; input.snap=true; }
+  updatePadSnap();
+});
+const snapUp=()=>{ input.snap=false; updatePadSnap(); };
+tSnap.addEventListener('pointerup',snapUp);
+tSnap.addEventListener('pointercancel',snapUp);
+tDisk.addEventListener('pointerdown',e=>{
+  e.preventDefault(); ensureAudio(); dropReq=true;
+  tDisk.classList.add('on'); setTimeout(()=>tDisk.classList.remove('on'),180);
+});
+// A long press on the controls must not open the browser's copy menu mid-run.
+$('pad').addEventListener('contextmenu',e=>e.preventDefault());
+// Tapping the board clears the hint so it doesn't cover the top rows.
+cv.addEventListener('pointerdown',()=>toast.classList.add('gone'));
+
+// Start in touch mode on phones and tablets, and switch over whenever someone touches the screen.
+setTouch(matchMedia('(pointer:coarse)').matches||(navigator.maxTouchPoints>0&&!matchMedia('(hover:hover)').matches));
+addEventListener('pointerdown',e=>{ if(e.pointerType==='touch') setTouch(true); },true);
 
 new ResizeObserver(layout).observe(stage);
 if(document.fonts&&document.fonts.ready) document.fonts.ready.then(()=>{ spriteKey=''; layout(); });
