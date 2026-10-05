@@ -1,6 +1,6 @@
 # Infotron Run
 
-A Supaplex-style puzzle game in a single HTML file: 25 boards, synthesised music and sound effects, keyboard and touch controls. It detects a touch screen and switches to a full-screen board with floating on-screen controls.
+A Supaplex-style puzzle game in a single HTML file: 35 boards (all open from the start), synthesised music and sound effects, keyboard and touch controls. It detects a touch screen and switches to a full-screen board with floating on-screen controls.
 
 **Play:** https://jkhany.github.io/infotron-run/
 
