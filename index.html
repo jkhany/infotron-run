@@ -1087,15 +1087,81 @@ const LEVELS = [
   '#.r........'+'...*....*..'+'.....=====.'+'.....*.....'+'..=====...#',
   '#'.repeat(55),
   ]},
+  /* Boards 36-39: the bestiary. Ping (P/p) bounces and only kills head-on, hunters (H) crawl after you, pulse mines (M) flash red then go off. */
+  {name:"Ping Pong", need:8,
+   hint:"Pings are glowing bouncers. They fly straight, turn round at anything solid, and are only deadly if they run into you. Dig a niche in the ceiling, step in, and let one pass underneath.",
+   map:[
+  '##############################',
+  '#@..*........*...........*...#',
+  '#............................#',
+  '#####.#####.#####.####.#######',
+  '#        P     *    *        #',
+  '########################.#####',
+  '#..*....*....*.......*....*..#',
+  '###.#####.#####.#####.####.###',
+  '#             P             E#',
+  '##############################',
+  ]},
+  {name:"Hunter's Den", need:6,
+   hint:"Hunters crawl at half your speed, but they never stop coming once you are within nine tiles. They cannot dig, so lose them behind the pillars, or drop the zonk on the ledge onto one.",
+   map:[
+  '##############################',
+  '#@..............*............#',
+  '#.......*....................#',
+  '#.......................*....#',
+  '######.#######################',
+  '#        *       *     O     #',
+  '#                 =   ... *  #',
+  '#         ==      ==         #',
+  '#         ==             H   #',
+  '#            *       *       #',
+  '#E            ==           H #',
+  '##############################',
+  ]},
+  {name:"Mine Field", need:6,
+   hint:"Pulse mines sit in the walls. Each one glows amber, then red, then goes off if you are next to it. Wait outside until the red light dies, then cross its three tiles before it wakes.",
+   map:[
+  '##############################',
+  '##############################',
+  '######M###########M###########',
+  '#@       *     *     *     * #',
+  '############M###########M###.#',
+  '############################.#',
+  '############################.#',
+  '############M###########M###.#',
+  '#E *     *     *     *       #',
+  '######M###########M###########',
+  '##############################',
+  ]},
+  {name:"Bestiary", need:8,
+   hint:"All three at once: a ping lane, a hunter hall, then a mine corridor. Lure the hunter away from the shaft at the left before you drop through to the mines.",
+   map:[
+  '################################',
+  '#@.....*..................*....#',
+  '#..............*...............#',
+  '####.#####.#####.#####.#########',
+  '#           P      *           #',
+  '############################.###',
+  '#                   =    *     #',
+  '#        *  =       =          #',
+  '#     H     =                  #',
+  '#              *               #',
+  '###.############################',
+  '###.##########M###########M#####',
+  '#          *     *     *      E#',
+  '########M###########M###########',
+  '################################',
+  ]},
 ];
 
 /* ---------- Constants ---------- */
-const WALL=1, RAM=2, BASE=3, ZONK=4, INFO=5, EXIT=6, SNIK=7, ELEC=8, ODISK=9, RDISK=10, RDISK_ON=11, PORT=12, EXPL=13;
+const WALL=1, RAM=2, BASE=3, ZONK=4, INFO=5, EXIT=6, SNIK=7, ELEC=8, ODISK=9, RDISK=10, RDISK_ON=11, PORT=12, EXPL=13, PING=14, HUNT=15, MINE=16;
 const DIRS=[{x:0,y:-1},{x:1,y:0},{x:0,y:1},{x:-1,y:0}];          // up, right, down, left
 const PORTS={'^':1,'>':2,'v':4,'<':8,'|':5,'-':10,'+':15};      // bit per direction
 const ROUND=new Set([ZONK,INFO,RAM]);                            // things roll off these
-const DYN=new Set([ZONK,INFO,ODISK,RDISK,RDISK_ON,SNIK,ELEC,EXPL]);
-const TICK=120, EXPL_T=7, FUSE=32;
+const DYN=new Set([ZONK,INFO,ODISK,RDISK,RDISK_ON,SNIK,ELEC,PING,HUNT,MINE,EXPL]);
+const ENEMY=new Set([SNIK,ELEC,PING,HUNT,MINE]);
+const TICK=170, EXPL_T=5, FUSE=23;
 const OOB={t:WALL};
 
 const $=id=>document.getElementById(id);
@@ -1121,6 +1187,11 @@ const SAVE_KEY='infotron-run-v1';
 let save={unlocked:1,best:{}};
 try{ const s=JSON.parse(localStorage.getItem(SAVE_KEY)); if(s&&typeof s.unlocked==='number') save=s; }catch(e){}
 function persist(){ try{ localStorage.setItem(SAVE_KEY,JSON.stringify(save)); }catch(e){} }
+// Migrate from TICK=120 to TICK=170: scale best times to keep wall-clock time the same
+if(save.v!==2){
+  for(const k in save.best) save.best[k]=Math.round(save.best[k]*120/170);
+  save.v=2; persist();
+}
 
 /* ---------- Sound ---------- */
 // Everything you hear is synthesised live with the Web Audio API; there are no audio files.
@@ -1417,6 +1488,10 @@ function load(i){
       case 'E': c={t:EXIT}; break;
       case 'S': c={t:SNIK,dir:3,hug:false}; break;
       case 'e': c={t:ELEC,dir:1,hug:false}; break;
+      case 'P': c={t:PING,dir:1}; break;
+      case 'p': c={t:PING,dir:0}; break;
+      case 'H': c={t:HUNT,off:(x+y)&1}; break;
+      case 'M': c={t:MINE,off:(x*3+y*5)&7}; break;
       case 'o': c={t:ODISK}; break;
       case 'r': c={t:RDISK}; break;
       case '@': m.x=m.fx=x; m.y=m.fy=y; break;
@@ -1506,8 +1581,11 @@ function stepMurphy(){
         }
       }
       break;
-    case SNIK: case ELEC:
+    case SNIK: case ELEC: case PING: case HUNT:
       walk(nx,ny); die(); break;
+    case MINE:
+      if(mineLive(c)){ walk(nx,ny); die(); }
+      break;
     case PORT:
       if(((c.mask>>d)&1)&&free(nx+D.x,ny+D.y)){ walk(nx+D.x,ny+D.y); sfx('port'); }
       break;
@@ -1521,6 +1599,9 @@ function stepWorld(){
     switch(c.t){
       case ZONK: case INFO: case ODISK: stepFall(c,x,y); break;
       case SNIK: case ELEC: stepEnemy(c,x,y); break;
+      case PING: stepPing(c,x,y); break;
+      case HUNT: stepHunt(c,x,y); break;
+      case MINE: stepMine(c,x,y); break;
       case RDISK_ON: if(--c.timer<=0) explode(x,y,false); break;
       case EXPL:
         if(--c.timer<=0) grid[y*W+x]=c.info?{t:INFO,mt:tick,falling:false}:null;
@@ -1535,7 +1616,7 @@ function stepFall(c,x,y){
   if(c.falling){
     c.falling=false;
     if(isM(x,y+1)){ die(); return; }
-    if(b&&(b.t===SNIK||b.t===ELEC)){ explode(x,y+1,b.t===ELEC); return; }
+    if(b&&ENEMY.has(b.t)){ explode(x,y+1,b.t===ELEC); return; }
     if(c.t===ODISK){ explode(x,y,false); return; }
     if(b&&b.t===ODISK){ explode(x,y+1,false); return; }
     sfx(c.t===ZONK?'thud':'tick');
@@ -1545,6 +1626,44 @@ function stepFall(c,x,y){
   if(!b||c.t===ODISK||!ROUND.has(b.t)||b.falling) return;
   if(free(x-1,y)&&free(x-1,y+1)){ move(x,y,x-1,y); return; }
   if(free(x+1,y)&&free(x+1,y+1)) move(x,y,x+1,y);
+}
+
+function stepPing(c,x,y){
+  const F=DIRS[c.dir];
+  if(isM(x+F.x,y+F.y)){ die(); return; }
+  if(free(x+F.x,y+F.y)){ move(x,y,x+F.x,y+F.y); return; }
+  c.dir=(c.dir+2)&3;
+}
+
+function stepHunt(c,x,y){
+  if(((tick+c.off)&1)!==0) return;
+  if(!m.alive) return;
+  const dx=m.x-x, dy=m.y-y;
+  if(Math.abs(dx)+Math.abs(dy)>9){ c.chase=false; return; }
+  if(Math.abs(dx)+Math.abs(dy)===1){ die(); return; }
+  const primaryHoriz=Math.abs(dx)>Math.abs(dy);
+  const candidates=[];
+  if(primaryHoriz){
+    if(dx!==0) candidates.push({x:x+(dx>0?1:-1),y:y,dir:(dx>0?1:3)});
+    if(dy!==0) candidates.push({x:x,y:y+(dy>0?1:-1),dir:(dy>0?2:0)});
+  }else{
+    if(dy!==0) candidates.push({x:x,y:y+(dy>0?1:-1),dir:(dy>0?2:0)});
+    if(dx!==0) candidates.push({x:x+(dx>0?1:-1),y:y,dir:(dx>0?1:3)});
+  }
+  for(const cand of candidates){
+    if(free(cand.x,cand.y)){
+      move(x,y,cand.x,cand.y); c.dir=cand.dir; c.chase=true;
+      return;
+    }
+  }
+  c.chase=false;
+}
+
+const mineLive=c=>((tick+c.off)&7)>=5;
+function stepMine(c,x,y){
+  if(mineLive(c)&&m.alive&&Math.max(Math.abs(m.x-x),Math.abs(m.y-y))<=1){
+    explode(x,y,false); return;
+  }
 }
 
 // Snik snaks keep a wall on their left, electrons keep one on their right.
@@ -1569,7 +1688,7 @@ function explode(cx,cy,info){
     if(x<0||y<0||x>=W||y>=H) continue;
     const i=y*W+x, c=grid[i];
     if(c&&(c.t===WALL||c.t===EXIT||c.t===PORT||c.t===EXPL)) continue;
-    if(c&&(dx||dy)&&(c.t===ODISK||c.t===RDISK||c.t===RDISK_ON||c.t===ELEC||c.t===SNIK))
+    if(c&&(dx||dy)&&(c.t===ODISK||c.t===RDISK||c.t===RDISK_ON||ENEMY.has(c.t)))
       pending.push({x,y,info:c.t===ELEC});
     grid[i]={t:EXPL,timer:EXPL_T,info:info,mt:tick,falling:false};
     burst(x,y,10,info?['#ffffff','#f59bff','#b44ae0']:['#fff3b0','#ffb23e','#ff6a1c','#c2381a'],4.2,.08,5,650);
@@ -1581,7 +1700,7 @@ function die(){
   if(!m.alive) return;
   m.alive=false;
   if(state==='play') state='dead';
-  deadTimer=16; sfx('die'); stopMusic();
+  deadTimer=11; sfx('die'); stopMusic();
   explode(m.x,m.y,false);
 }
 
@@ -1939,6 +2058,180 @@ function drawElec(g,px,py,s,now){
   cg.addColorStop(0,'#ffffff'); cg.addColorStop(1,'#ffe066');
   g.fillStyle=cg; dot(g,cx,cy,s*.13);
 }
+function drawPing(g,px,py,s,dir,now){
+  g.fillStyle='rgba(0,0,0,.3)';
+  g.beginPath(); g.ellipse(px+s*.55,py+s*.9,s*.3,s*.07,0,0,Math.PI*2); g.fill();
+  const cx=px+s/2, cy=py+s/2;
+  const gl=g.createRadialGradient(cx,cy,0,cx,cy,s*.5);
+  gl.addColorStop(0,'rgba(100,220,255,.5)'); gl.addColorStop(.6,'rgba(0,180,220,.15)'); gl.addColorStop(1,'rgba(0,180,220,0)');
+  g.fillStyle=gl; g.fillRect(px,py,s,s);
+  g.save(); g.translate(cx,cy); g.rotate(dir*Math.PI/2);
+  const sz=Math.sin(now/150)*.15+.35;
+  g.fillStyle='rgba(100,255,220,.8)'; g.beginPath(); g.moveTo(s*.15,0); g.lineTo(0,-s*.1); g.lineTo(-s*.15,0); g.lineTo(0,s*.1); g.closePath(); g.fill();
+  g.fillStyle='#ffffff'; dot(g,0,0,s*.08);
+  g.strokeStyle='rgba(100,255,220,.6)'; g.lineWidth=Math.max(1,s*.04);
+  g.beginPath(); g.arc(0,0,s*.35,0,Math.PI*2); g.stroke();
+  g.restore();
+}
+function drawHunt(g,px,py,s,now,chase,dir){
+  g.fillStyle='rgba(0,0,0,.3)';
+  g.beginPath(); g.ellipse(px+s*.55,py+s*.9,s*.3,s*.07,0,0,Math.PI*2); g.fill();
+  const cx=px+s/2, cy=py+s/2;
+  g.save(); g.translate(cx,cy);
+
+  // Violet body with radial gradient and outline
+  const bodyGrad=g.createRadialGradient(0,0,0,0,0,s*.26);
+  bodyGrad.addColorStop(0,'#b27cff');
+  bodyGrad.addColorStop(.5,'#5a2a9c');
+  bodyGrad.addColorStop(1,'#2a1050');
+  g.fillStyle=bodyGrad; dot(g,0,0,s*.26);
+
+  // Dark outline around body
+  g.strokeStyle='#1a0835'; g.lineWidth=Math.max(1,s*.022);
+  g.beginPath(); g.arc(0,0,s*.26,0,Math.PI*2); g.stroke();
+
+  // White specular highlight on body
+  g.fillStyle='rgba(255,255,255,.35)'; dot(g,-s*.08,-s*.08,s*.045);
+
+  // 6 jointed legs with wiggle animation
+  g.lineCap='round'; g.lineJoin='round';
+  for(let i=0;i<6;i++){
+    const baseAngle=Math.PI*2*i/6;
+    const wiggle=Math.sin(now/110+i)*.35;
+    const a1=baseAngle+wiggle;
+
+    g.strokeStyle='#c9a6ff'; g.lineWidth=Math.max(1,s*.045);
+    g.beginPath();
+
+    // Leg segments radiating out with joints
+    const sx1=Math.cos(a1)*s*.13, sy1=Math.sin(a1)*s*.13;
+    const sx2=Math.cos(a1+wiggle*.5)*s*.24, sy2=Math.sin(a1+wiggle*.5)*s*.24;
+
+    g.moveTo(sx1,sy1);
+    g.lineTo(sx2,sy2);
+    g.stroke();
+  }
+
+  // Large eye with sclera and iris
+  g.fillStyle='#ffffff';
+  const eyeDir=DIRS[dir];
+  const eyeX=eyeDir.x*s*.04, eyeY=eyeDir.y*s*.04;
+  dot(g,eyeX,eyeY,s*.11);
+
+  // Iris and pupil
+  if(chase){
+    g.fillStyle='#ff2a1a'; dot(g,eyeX,eyeY,s*.065);
+    g.fillStyle='#1a0000'; dot(g,eyeX,eyeY,s*.035);
+    g.fillStyle='#ffffff'; dot(g,eyeX-s*.015,eyeY-s*.015,s*.012);
+    // Faint red glow around body when chasing
+    const chaseGlow=g.createRadialGradient(0,0,s*.2,0,0,s*.35);
+    chaseGlow.addColorStop(0,'rgba(255,42,26,.15)');
+    chaseGlow.addColorStop(1,'rgba(255,42,26,0)');
+    g.fillStyle=chaseGlow; g.fillRect(-s*.35,-s*.35,s*.7,s*.7);
+  }else{
+    g.fillStyle='#ffb23e'; dot(g,eyeX,eyeY,s*.065);
+    g.fillStyle='#8a6a1f'; dot(g,eyeX,eyeY,s*.035);
+    // Half-closed upper lid when calm
+    g.fillStyle='rgba(42,16,80,.5)';
+    g.beginPath(); g.ellipse(eyeX,eyeY-s*.055,s*.068,s*.025,0,0,Math.PI); g.fill();
+  }
+
+  g.restore();
+}
+function drawMine(g,px,py,s,now,c){
+  g.fillStyle='rgba(0,0,0,.3)';
+  g.beginPath(); g.ellipse(px+s*.55,py+s*.9,s*.3,s*.07,0,0,Math.PI*2); g.fill();
+  const cx=px+s/2, cy=py+s/2;
+  const phase=((tick+c.off)&7);
+  const live=mineLive(c), warn=phase===4;
+
+  // Metal sphere body with radial gradient
+  const sphereGrad=g.createRadialGradient(cx-s*.065,cy-s*.065,0,cx,cy,s*.24);
+  sphereGrad.addColorStop(0,'#c9d3da');
+  sphereGrad.addColorStop(.6,'#8a99a3');
+  sphereGrad.addColorStop(1,'#3b454d');
+  g.fillStyle=sphereGrad; dot(g,cx,cy,s*.24);
+
+  // Dark outline around sphere
+  g.strokeStyle='#1f252a'; g.lineWidth=Math.max(1,s*.02);
+  g.beginPath(); g.arc(cx,cy,s*.24,0,Math.PI*2); g.stroke();
+
+  // 8 metal spikes radiating from body
+  for(let i=0;i<8;i++){
+    const a=Math.PI*2*i/8;
+    const bodyR=s*.24;
+    const tipDist=s*.44;
+
+    // Spike gradient from light to dark metal
+    const sx=Math.cos(a), sy=Math.sin(a);
+    const spikeGrad=g.createLinearGradient(
+      cx+sx*bodyR,cy+sy*bodyR,
+      cx+sx*tipDist,cy+sy*tipDist
+    );
+    spikeGrad.addColorStop(0,'#c9d3da');
+    spikeGrad.addColorStop(.7,'#8a99a3');
+    spikeGrad.addColorStop(1,'#5a6a74');
+
+    // Draw spike as triangle
+    const perpX=-sy*s*.055, perpY=sx*s*.055;
+    g.fillStyle=spikeGrad;
+    g.beginPath();
+    g.moveTo(cx+sx*bodyR, cy+sy*bodyR);
+    g.lineTo(cx+perpX, cy+perpY);
+    g.lineTo(cx+sx*tipDist, cy+sy*tipDist);
+    g.closePath();
+    g.fill();
+
+    // Dark outline on spike
+    g.strokeStyle='#1f252a'; g.lineWidth=Math.max(1,s*.018);
+    g.beginPath();
+    g.moveTo(cx+sx*bodyR, cy+sy*bodyR);
+    g.lineTo(cx+perpX, cy+perpY);
+    g.lineTo(cx+sx*tipDist, cy+sy*tipDist);
+    g.closePath();
+    g.stroke();
+  }
+
+  // Specular highlight on sphere
+  g.fillStyle='rgba(255,255,255,.4)'; dot(g,cx-s*.06,cy-s*.06,s*.038);
+
+  // Centre lamp with state-dependent appearance
+  let lampFlash=false;
+  if(live){
+    // Live mine: bright red with white-hot core
+    if(warn) lampFlash=(Math.floor(now/90)%2===0);
+    if(!warn || lampFlash){
+      // Bright red glow around whole mine
+      const liveGlow=g.createRadialGradient(cx,cy,0,cx,cy,s*.28);
+      liveGlow.addColorStop(0,'rgba(255,42,26,.35)');
+      liveGlow.addColorStop(.5,'rgba(255,42,26,.1)');
+      liveGlow.addColorStop(1,'rgba(255,42,26,0)');
+      g.fillStyle=liveGlow; g.fillRect(cx-s*.28,cy-s*.28,s*.56,s*.56);
+
+      g.fillStyle='#ff2a1a'; dot(g,cx,cy,s*.095);
+      g.fillStyle='#ffffff'; dot(g,cx,cy,s*.045);
+    }else{
+      // Flashing off state during warning
+      g.fillStyle='#330000'; dot(g,cx,cy,s*.095);
+    }
+  }else if(warn){
+    // Warning state: amber lamp flashing
+    if(Math.floor(now/90)%2===0){
+      g.fillStyle='#ffaa00'; dot(g,cx,cy,s*.095);
+      g.fillStyle='#ff8800';
+      g.strokeStyle='#aa6600'; g.lineWidth=Math.max(1,s*.015);
+      g.beginPath(); g.arc(cx,cy,s*.105,0,Math.PI*2); g.stroke();
+    }else{
+      g.fillStyle='#553300'; dot(g,cx,cy,s*.095);
+    }
+  }else{
+    // Dormant state: dim dark-red lamp with darker ring
+    g.fillStyle='#550000'; dot(g,cx,cy,s*.095);
+    g.fillStyle='#330000';
+    g.strokeStyle='#220000'; g.lineWidth=Math.max(1,s*.015);
+    g.beginPath(); g.arc(cx,cy,s*.105,0,Math.PI*2); g.stroke();
+  }
+}
 function drawInfoElectrons(g,px,py,s,rot,now){
   for(let k=0;k<3;k++){
     const a=now/330+k*2.1, ang=rot+k*Math.PI/3;
@@ -2153,6 +2446,9 @@ function render(alpha,now,dt){
         break;
       case SNIK: drawSnik(ctx,px,py,T,c.dir,now); break;
       case ELEC: drawElec(ctx,px,py,T,now); break;
+      case PING: drawPing(ctx,px,py,T,c.dir,now); break;
+      case HUNT: drawHunt(ctx,px,py,T,now,c.chase,c.dir||1); break;
+      case MINE: drawMine(ctx,px,py,T,now,c); break;
       case EXPL: drawExpl(ctx,px,py,T,c,alpha); break;
     }
   }
@@ -2191,6 +2487,9 @@ const LEGEND=[
   ['exit','Exit','Opens at zero needed'],
   ['snik','Snik snak','Follows walls, deadly'],
   ['elec','Electron','Bursts into infotrons'],
+  ['ping','Ping','Bounces, deadly head-on'],
+  ['hunt','Hunter','Slow chaser, deadly'],
+  ['mine','Pulse mine','Blows when it flashes red'],
   ['odisk','Orange disk','Explodes when it lands'],
   ['rdisk','Red disk','Pick up, drop with X'],   // touchText() swaps the keys for the touch buttons
   ['port','Port','Pass through the arrow way'],
@@ -2208,6 +2507,9 @@ function drawIcon(c,k){
     case 'exit':   unit(dExit,true); break;
     case 'snik':   unit(dBg); drawSnik(g,0,0,S,1,600); break;
     case 'elec':   unit(dBg); drawElec(g,0,0,S,0); break;
+    case 'ping':   unit(dBg); drawPing(g,0,0,S,1,600); break;
+    case 'hunt':   unit(dBg); drawHunt(g,0,0,S,600,true,1); break;
+    case 'mine':   unit(dBg); drawMine(g,0,0,S,600,{off:0}); break;
     case 'odisk':  unit(dBg); unit(dDisk,'o'); break;
     case 'rdisk':  unit(dBg); unit(dDisk,'r'); break;
     case 'port':   unit(dPort,2); break;
@@ -2367,7 +2669,7 @@ function setTouch(on){
 
 // The stick is one touch zone: the direction comes from where the finger is relative to its centre,
 // so sliding a thumb round it turns Murphy without lifting.
-let stickId=null, stickDir=-1;
+let stickId=null, stickDir=-1, turnTimer=null, wantDir=-1;
 function setStickDir(d){
   if(d===stickDir) return;
   if(stickDir>=0) input.release(stickDir);
@@ -2381,7 +2683,25 @@ function setStickDir(d){
 function stickAt(e){
   const r=stick.getBoundingClientRect(), dx=e.clientX-(r.left+r.width/2), dy=e.clientY-(r.top+r.height/2);
   const dist=Math.hypot(dx,dy);
-  setStickDir(dist<r.width*.12?-1:Math.abs(dx)>Math.abs(dy)?(dx>0?1:3):(dy>0?2:0));
+  const ax=Math.abs(dx), ay=Math.abs(dy);
+  const horiz=stickDir===1||stickDir===3;
+  let want=-1;
+  if(stickDir<0 ? dist>=r.width*.16 : dist>=r.width*.10){
+    const useX=stickDir<0?(ax>ay):horiz?!(ay>ax*1.35):(ax>ay*1.35);
+    want=useX?(dx>0?1:3):(dy>0?2:0);
+  }
+  if(want===-1 || stickDir<0 || want===stickDir){
+    clearTimeout(turnTimer); turnTimer=null;
+    setStickDir(want);
+  }else if(want!==stickDir){
+    wantDir=want;
+    if(turnTimer===null){
+      turnTimer=setTimeout(()=>{
+        turnTimer=null;
+        if(wantDir!==stickDir) setStickDir(wantDir);
+      },70);
+    }
+  }
   const k=Math.min(1,dist/(r.width*.32)), a=Math.atan2(dy,dx), R=r.width*.22;
   knob.style.transform='translate(-50%,-50%) translate('+(Math.cos(a)*k*R).toFixed(1)+'px,'+(Math.sin(a)*k*R).toFixed(1)+'px)';
 }
@@ -2395,6 +2715,7 @@ stick.addEventListener('pointerdown',e=>{
 stick.addEventListener('pointermove',e=>{ if(e.pointerId===stickId) stickAt(e); });
 const stickUp=e=>{
   if(e.pointerId!==stickId) return;
+  clearTimeout(turnTimer); turnTimer=null;
   stickId=null; setStickDir(-1);
   stick.classList.remove('on'); knob.style.transform='';
   ensureAudio();   // phones only let audio start on a finger lift, not a touch-down
